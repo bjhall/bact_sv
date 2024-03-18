@@ -454,8 +454,8 @@ def blast_all_clips_to_assembly(clips, subject_fasta, label, max_mismatches = 1,
 def get_softclip_consensus_sequences(bam_path):
     ''' Collection consensus softclipped sequences from bam file'''
     clips = []
-
-    softclips_out = subprocess.check_output(["/storage/bjorn/dev/bact_sv/target/release/bact_sv", bam_path], text=True).split("\n")
+    script_dir = os.path.dirname(os.path.realpath(__file__))
+    softclips_out = subprocess.check_output([f"{script_dir}/target/release/bact_sv", bam_path], text=True).split("\n")
     for line in softclips_out:
         if len(line) == 0:
             continue
