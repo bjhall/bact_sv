@@ -1,0 +1,4 @@
+/target
+__*__
+Cargo.lock
+transposons.fna
