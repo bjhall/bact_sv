@@ -10,10 +10,10 @@
 #    * Insertion at 4378689 in  /storage/bjorn/analyses/emre_b52_insertions_231109/seq3721_b5220.to.CP024090.bam
 
 import os
+import sys
 import subprocess
 import tempfile
 import argparse
-from multiprocessing import Process, Manager
 
 from collections import defaultdict
 from pprint import pprint as pp
@@ -28,31 +28,16 @@ MAX_DELETION_SIZE = 500_000
 
 
 def main(arg):
-    manager = Manager()
     clips = get_softclip_consensus_sequences(arg.bam)
 
-    clips_manager = manager.list(clips)
-    #print("BLASTing consensus clips to query assembly genome...")
+    print("BLASTing consensus clips to query assembly genome...", file=sys.stderr)
     blast_all_clips_to_assembly(clips, arg.assembly, "query")
 
-    #print("BLASTing consensus clips to reference assembly genome...")
+    print("BLASTing consensus clips to reference assembly genome...", file=sys.stderr)
     blast_all_clips_to_assembly(clips, arg.reference, "reference")
 
-    #print("BLASTing consensus clips to transposon references...")
+    print("BLASTing consensus clips to transposon references...", file=sys.stderr)
     blast_all_clips_to_assembly(clips, f"{script_dir}/transposons.fna", "transposons", max_mismatches = 5)
-
-    print("BLASTing")
-    #blast_query_job = Process(target = blast_all_clips_to_assembly, args=(clips_manager, arg.assembly, "query"))
-    #blast_ref_job = Process(target = blast_all_clips_to_assembly, args=(clips_manager, arg.reference, "reference"))
-    #blast_tn_job = Process(target = blast_all_clips_to_assembly, args=(clips_manager, f"{script_dir}/transposons.fna", "transposons", 5))
-    #blast_query_job.start()
-    #blast_ref_job.start()
-    #blast_tn_job.start()
-    #blast_query_job.join()
-    #blast_ref_job.join()
-    #blast_tn_job.join()
-    #print(clips_manager)
-    #exit()
 
     query_assembly_sequences = read_fasta(arg.assembly)
     calls = call_svs(clips, query_assembly_sequences)
@@ -76,9 +61,10 @@ def call_svs(clips, query_assembly_sequences):
 
 
     # Flag clips with reads that were clipped in both ends. These are typically supposed to map to
-    # somethin that's not present in the reference assembly (insertion, new/unknown plasmid etc)
+    # something that's not present in the reference assembly (insertion, new/unknown plasmid etc)
     flag_double_clipped(clips)
 
+    flag_low_freq_clips(clips)
 
     # Call different types of SVs
     all_calls.extend(call_circ(clips))
@@ -94,7 +80,7 @@ def call_svs(clips, query_assembly_sequences):
     flag_variable_short_clips(clips)
 
     # TODO: Flag various orphans?
-    
+
     return all_calls
 
 
@@ -118,7 +104,11 @@ def flag_variable_short_clips(clips):
         if n_Ns >= 1 and not clip.blast("reference") and not clip.blast("query"):
             clip.set_sv_type("WEIRD")
 
-
+def flag_low_freq_clips(clips, cutoff = 0.05):
+    for clip in clips:
+        rough_clip_frequency_estimate = clip.n_clipped_reads / clip.surrounding_depth
+        if rough_clip_frequency_estimate < cutoff:
+            clip.set_sv_type("LOW_FREQ")
 
 
 def call_delins(clips, query_assembly_sequences):
@@ -459,8 +449,8 @@ def get_softclip_consensus_sequences(bam_path):
     for line in softclips_out:
         if len(line) == 0:
             continue
-        direction, contig, position, contig_length, n_clipped_reads, n_multi_mapped, n_double_clipped, clip_consensus = line.strip().split("\t")
-        clips.append(SoftClip(contig, direction, position, contig_length, n_clipped_reads, n_multi_mapped, n_double_clipped, clip_consensus))
+        direction, contig, position, contig_length, n_clipped_reads, surrounding_depth, n_multi_mapped, n_double_clipped, clip_consensus = line.strip().split("\t")
+        clips.append(SoftClip(contig, direction, position, contig_length, n_clipped_reads, surrounding_depth, n_multi_mapped, n_double_clipped, clip_consensus))
 
     return clips
 
